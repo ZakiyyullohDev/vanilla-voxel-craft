@@ -1,24 +1,91 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>vanilla-voxel-craft</title>
-    <meta name="description" content="Lovable Generated Project" />
-    <meta name="author" content="Lovable" />
-
-    <meta property="og:title" content="vanilla-voxel-craft" />
-    <meta property="og:description" content="Lovable Generated Project" />
-    <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
-
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@lovable_dev" />
-    <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
-  </head>
-
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voxel Craft - Minecraft-like Game</title>
+    <meta name="description" content="A beautiful voxel-based sandbox game built with Three.js">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+        
+        <!-- HUD Overlay -->
+        <div id="hud" class="hud">
+            <div id="crosshair" class="crosshair"></div>
+            
+            <div id="stats" class="stats">
+                <div id="fps">FPS: 60</div>
+                <div id="coords">X: 0, Y: 0, Z: 0</div>
+                <div id="mode">Creative Mode</div>
+            </div>
+            
+            <div id="hotbar" class="hotbar">
+                <div class="hotbar-slot active" data-block="1">
+                    <div class="block-icon grass"></div>
+                    <span>1</span>
+                </div>
+                <div class="hotbar-slot" data-block="2">
+                    <div class="block-icon dirt"></div>
+                    <span>2</span>
+                </div>
+                <div class="hotbar-slot" data-block="3">
+                    <div class="block-icon stone"></div>
+                    <span>3</span>
+                </div>
+                <div class="hotbar-slot" data-block="4">
+                    <div class="block-icon sand"></div>
+                    <span>4</span>
+                </div>
+                <div class="hotbar-slot" data-block="5">
+                    <div class="block-icon water"></div>
+                    <span>5</span>
+                </div>
+                <div class="hotbar-slot" data-block="6">
+                    <div class="block-icon wood"></div>
+                    <span>6</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Pause Menu -->
+        <div id="pause-menu" class="pause-menu hidden">
+            <div class="pause-content">
+                <h2>Game Paused</h2>
+                <button id="resume-btn" class="menu-btn">Resume</button>
+                <button id="save-btn" class="menu-btn">Save World</button>
+                <button id="load-btn" class="menu-btn">Load World</button>
+                <button id="regenerate-btn" class="menu-btn">New World</button>
+                <button id="toggle-mode-btn" class="menu-btn">Toggle Mode</button>
+                <div class="controls-info">
+                    <h3>Controls</h3>
+                    <p>WASD - Move | Mouse - Look | Space - Jump</p>
+                    <p>Left Click - Break | Right Click - Place</p>
+                    <p>1-6 - Select Block | F - Toggle Noclip | ESC - Menu</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Loading Screen -->
+        <div id="loading" class="loading">
+            <div class="loading-content">
+                <h1>Voxel Craft</h1>
+                <div class="loading-bar">
+                    <div id="loading-progress" class="loading-progress"></div>
+                </div>
+                <p>Generating world...</p>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r158/three.min.js"></script>
+    <script src="js/engine/Noise.js"></script>
+    <script src="js/engine/Save.js"></script>
+    <script src="js/engine/Chunk.js"></script>
+    <script src="js/engine/World.js"></script>
+    <script src="js/engine/Renderer.js"></script>
+    <script src="js/ui/HUD.js"></script>
+    <script src="main.js"></script>
+</body>
 </html>
