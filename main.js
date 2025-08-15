@@ -242,7 +242,7 @@ class Game {
 
 function initGame() {
     if (typeof THREE !== 'undefined') {
-        new Game();
+        window.game = new Game();
     } else {
         console.error('THREE.js failed to load');
     }

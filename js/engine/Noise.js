@@ -1,111 +1,106 @@
-class SimplexNoise {
-    constructor(seed = 0) {
+class Noise {
+    constructor(seed = 12345) {
+        this.seed = seed;
+        this.perm = [];
+        this.gradP = [];
         this.grad3 = [
-            [1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0],
-            [1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1],
-            [0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1]
+            [1, 1, 0], [-1, 1, 0], [1, -1, 0], [-1, -1, 0],
+            [1, 0, 1], [-1, 0, 1], [1, 0, -1], [-1, 0, -1],
+            [0, 1, 1], [0, -1, 1], [0, 1, -1], [0, -1, -1]
         ];
-        
         this.p = [];
         for (let i = 0; i < 256; i++) {
-            this.p[i] = Math.floor(this.seededRandom(seed + i) * 256);
+            this.p[i] = Math.floor(this.seededRandom() * 256);
         }
-        
-        this.perm = [];
         for (let i = 0; i < 512; i++) {
             this.perm[i] = this.p[i & 255];
-        }
-        
-        this.permMod12 = [];
-        for (let i = 0; i < 512; i++) {
-            this.permMod12[i] = this.perm[i] % 12;
+            this.gradP[i] = this.grad3[this.perm[i] % 12];
         }
     }
     
-    seededRandom(seed) {
-        const x = Math.sin(seed) * 10000;
-        return x - Math.floor(x);
+    seededRandom() {
+        this.seed = (this.seed * 9301 + 49297) % 233280;
+        return this.seed / 233280;
     }
     
-    dot(g, x, y) {
-        return g[0] * x + g[1] * y;
+    dot(g, x, y, z) {
+        return g[0] * x + g[1] * y + g[2] * z;
     }
     
-    noise2D(xin, yin) {
-        const F2 = 0.5 * (Math.sqrt(3.0) - 1.0);
-        const s = (xin + yin) * F2;
-        const i = Math.floor(xin + s);
-        const j = Math.floor(yin + s);
-        
-        const G2 = (3.0 - Math.sqrt(3.0)) / 6.0;
-        const t = (i + j) * G2;
-        const X0 = i - t;
-        const Y0 = j - t;
-        const x0 = xin - X0;
-        const y0 = yin - Y0;
-        
-        let i1, j1;
-        if (x0 > y0) {
-            i1 = 1; j1 = 0;
-        } else {
-            i1 = 0; j1 = 1;
-        }
-        
-        const x1 = x0 - i1 + G2;
-        const y1 = y0 - j1 + G2;
-        const x2 = x0 - 1.0 + 2.0 * G2;
-        const y2 = y0 - 1.0 + 2.0 * G2;
-        
-        const ii = i & 255;
-        const jj = j & 255;
-        const gi0 = this.permMod12[ii + this.perm[jj]];
-        const gi1 = this.permMod12[ii + i1 + this.perm[jj + j1]];
-        const gi2 = this.permMod12[ii + 1 + this.perm[jj + 1]];
-        
-        let n0, n1, n2;
-        
-        let t0 = 0.5 - x0 * x0 - y0 * y0;
-        if (t0 < 0) {
-            n0 = 0.0;
-        } else {
-            t0 *= t0;
-            n0 = t0 * t0 * this.dot(this.grad3[gi0], x0, y0);
-        }
-        
-        let t1 = 0.5 - x1 * x1 - y1 * y1;
-        if (t1 < 0) {
-            n1 = 0.0;
-        } else {
-            t1 *= t1;
-            n1 = t1 * t1 * this.dot(this.grad3[gi1], x1, y1);
-        }
-        
-        let t2 = 0.5 - x2 * x2 - y2 * y2;
-        if (t2 < 0) {
-            n2 = 0.0;
-        } else {
-            t2 *= t2;
-            n2 = t2 * t2 * this.dot(this.grad3[gi2], x2, y2);
-        }
-        
-        return 70.0 * (n0 + n1 + n2);
+    mix(a, b, t) {
+        return (1 - t) * a + t * b;
     }
     
-    octave2D(x, y, octaves = 4, persistence = 0.5, scale = 1) {
-        let value = 0;
+    fade(t) {
+        return t * t * t * (t * (t * 6 - 15) + 10);
+    }
+    
+    noise(x, y, z) {
+        const X = Math.floor(x) & 255;
+        const Y = Math.floor(y) & 255;
+        const Z = Math.floor(z) & 255;
+        
+        x -= Math.floor(x);
+        y -= Math.floor(y);
+        z -= Math.floor(z);
+        
+        const u = this.fade(x);
+        const v = this.fade(y);
+        const w = this.fade(z);
+        
+        const A = this.perm[X] + Y;
+        const AA = this.perm[A] + Z;
+        const AB = this.perm[A + 1] + Z;
+        const B = this.perm[X + 1] + Y;
+        const BA = this.perm[B] + Z;
+        const BB = this.perm[B + 1] + Z;
+        
+        return this.mix(
+            this.mix(
+                this.mix(
+                    this.dot(this.gradP[AA], x, y, z),
+                    this.dot(this.gradP[BA], x - 1, y, z),
+                    u
+                ),
+                this.mix(
+                    this.dot(this.gradP[AB], x, y - 1, z),
+                    this.dot(this.gradP[BB], x - 1, y - 1, z),
+                    u
+                ),
+                v
+            ),
+            this.mix(
+                this.mix(
+                    this.dot(this.gradP[AA + 1], x, y, z - 1),
+                    this.dot(this.gradP[BA + 1], x - 1, y, z - 1),
+                    u
+                ),
+                this.mix(
+                    this.dot(this.gradP[AB + 1], x, y - 1, z - 1),
+                    this.dot(this.gradP[BB + 1], x - 1, y - 1, z - 1),
+                    u
+                ),
+                v
+            ),
+            w
+        );
+    }
+    
+    octaveNoise(x, y, z, octaves = 4, persistence = 0.5) {
+        let total = 0;
+        let frequency = 1;
         let amplitude = 1;
-        let frequency = scale;
         let maxValue = 0;
         
         for (let i = 0; i < octaves; i++) {
-            value += this.noise2D(x * frequency, y * frequency) * amplitude;
+            total += this.noise(x * frequency, y * frequency, z * frequency) * amplitude;
             maxValue += amplitude;
             amplitude *= persistence;
             frequency *= 2;
         }
         
-        return value / maxValue;
+        return total / maxValue;
     }
 }
 
-window.SimplexNoise = SimplexNoise;
+window.Noise = Noise;

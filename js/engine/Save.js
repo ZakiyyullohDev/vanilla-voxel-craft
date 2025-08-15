@@ -1,24 +1,21 @@
 class SaveManager {
     constructor() {
-        this.worldKey = 'voxelcraft_world';
-        this.settingsKey = 'voxelcraft_settings';
+        this.storageKey = 'voxelcraft_save';
     }
     
     async save(world, playerPosition) {
+        const saveData = {
+            chunks: this.compressChunks(world.chunks),
+            playerPosition: {
+                x: playerPosition.x,
+                y: playerPosition.y,
+                z: playerPosition.z
+            },
+            timestamp: Date.now()
+        };
+        
         try {
-            const data = {
-                chunks: this.compressChunks(world.chunks),
-                playerPosition: {
-                    x: playerPosition.x,
-                    y: playerPosition.y,
-                    z: playerPosition.z
-                },
-                timestamp: Date.now(),
-                version: '1.0'
-            };
-            
-            const compressed = this.compress(JSON.stringify(data));
-            localStorage.setItem(this.worldKey, compressed);
+            localStorage.setItem(this.storageKey, JSON.stringify(saveData));
             return true;
         } catch (error) {
             console.error('Save failed:', error);
@@ -28,17 +25,14 @@ class SaveManager {
     
     async load() {
         try {
-            const compressed = localStorage.getItem(this.worldKey);
-            if (!compressed) return null;
+            const saveData = localStorage.getItem(this.storageKey);
+            if (!saveData) return null;
             
-            const data = JSON.parse(this.decompress(compressed));
-            
-            return {
-                chunks: this.decompressChunks(data.chunks),
-                playerPosition: data.playerPosition,
-                timestamp: data.timestamp,
-                version: data.version
-            };
+            const parsed = JSON.parse(saveData);
+            if (parsed.chunks) {
+                parsed.chunks = this.decompressChunks(parsed.chunks);
+            }
+            return parsed;
         } catch (error) {
             console.error('Load failed:', error);
             return null;
@@ -47,84 +41,55 @@ class SaveManager {
     
     compressChunks(chunks) {
         const compressed = {};
-        
-        for (const [key, chunk] of chunks.entries()) {
-            if (chunk.modified) {
-                compressed[key] = this.compressChunkData(chunk.blocks);
+        for (const key in chunks) {
+            const chunk = chunks[key];
+            if (chunk.blocks) {
+                compressed[key] = this.runLengthEncode(chunk.blocks);
             }
         }
-        
         return compressed;
     }
     
-    decompressChunks(compressedChunks) {
-        const chunks = new Map();
-        
-        for (const [key, compressedData] of Object.entries(compressedChunks)) {
-            const blocks = this.decompressChunkData(compressedData);
-            chunks.set(key, { blocks, modified: true });
+    decompressChunks(compressed) {
+        const chunks = {};
+        for (const key in compressed) {
+            chunks[key] = {
+                blocks: this.runLengthDecode(compressed[key])
+            };
         }
-        
         return chunks;
     }
     
-    compressChunkData(blocks) {
-        const runs = [];
-        let currentBlock = blocks[0];
+    runLengthEncode(blocks) {
+        const encoded = [];
+        let currentValue = blocks[0];
         let count = 1;
         
         for (let i = 1; i < blocks.length; i++) {
-            if (blocks[i] === currentBlock && count < 255) {
+            if (blocks[i] === currentValue) {
                 count++;
             } else {
-                runs.push([currentBlock, count]);
-                currentBlock = blocks[i];
+                encoded.push([currentValue, count]);
+                currentValue = blocks[i];
                 count = 1;
             }
         }
-        runs.push([currentBlock, count]);
-        
-        return runs;
+        encoded.push([currentValue, count]);
+        return encoded;
     }
     
-    decompressChunkData(runs) {
-        const blocks = new Uint8Array(16 * 16 * 16);
-        let index = 0;
-        
-        for (const [blockType, count] of runs) {
+    runLengthDecode(encoded) {
+        const blocks = [];
+        for (const [value, count] of encoded) {
             for (let i = 0; i < count; i++) {
-                blocks[index++] = blockType;
+                blocks.push(value);
             }
         }
-        
         return blocks;
     }
     
-    compress(str) {
-        try {
-            return btoa(unescape(encodeURIComponent(str)));
-        } catch (e) {
-            return str;
-        }
-    }
-    
-    decompress(str) {
-        try {
-            return decodeURIComponent(escape(atob(str)));
-        } catch (e) {
-            return str;
-        }
-    }
-    
     clear() {
-        localStorage.removeItem(this.worldKey);
-        localStorage.removeItem(this.settingsKey);
-    }
-    
-    getSize() {
-        const world = localStorage.getItem(this.worldKey);
-        const settings = localStorage.getItem(this.settingsKey);
-        return (world ? world.length : 0) + (settings ? settings.length : 0);
+        localStorage.removeItem(this.storageKey);
     }
 }
 

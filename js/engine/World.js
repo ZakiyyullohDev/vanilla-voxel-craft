@@ -1,179 +1,155 @@
 class World {
     constructor() {
-        this.chunks = new Map();
-        this.renderDistance = 8;
-        this.noise = new SimplexNoise(Math.random() * 1000);
-        this.scene = null;
+        this.chunks = {};
+        this.scene = new THREE.Scene();
+        this.noise = new Noise(Math.random() * 10000);
+        this.chunkSize = 16;
+        this.renderDistance = 4;
     }
     
     async init() {
-        this.scene = new THREE.Group();
         await this.generateInitialChunks();
     }
     
     async generateInitialChunks() {
         const promises = [];
-        const center = { x: 0, z: 0 };
-        
-        for (let x = -this.renderDistance; x <= this.renderDistance; x++) {
-            for (let z = -this.renderDistance; z <= this.renderDistance; z++) {
-                promises.push(this.loadChunk(center.x + x, center.z + z));
+        for (let x = -2; x <= 2; x++) {
+            for (let y = 0; y <= 3; y++) {
+                for (let z = -2; z <= 2; z++) {
+                    promises.push(this.loadChunk(x, y, z));
+                }
             }
         }
-        
         await Promise.all(promises);
     }
     
-    getChunkKey(chunkX, chunkZ) {
-        return `${chunkX},${chunkZ}`;
+    getChunkKey(x, y, z) {
+        return `${x},${y},${z}`;
     }
     
-    getChunk(chunkX, chunkZ) {
-        const key = this.getChunkKey(chunkX, chunkZ);
-        return this.chunks.get(key);
+    worldToChunkCoords(x, y, z) {
+        return {
+            chunkX: Math.floor(x / this.chunkSize),
+            chunkY: Math.floor(y / this.chunkSize),
+            chunkZ: Math.floor(z / this.chunkSize),
+            localX: ((x % this.chunkSize) + this.chunkSize) % this.chunkSize,
+            localY: ((y % this.chunkSize) + this.chunkSize) % this.chunkSize,
+            localZ: ((z % this.chunkSize) + this.chunkSize) % this.chunkSize
+        };
     }
     
-    async loadChunk(chunkX, chunkZ) {
-        const key = this.getChunkKey(chunkX, chunkZ);
+    async loadChunk(x, y, z) {
+        const key = this.getChunkKey(x, y, z);
+        if (this.chunks[key]) return this.chunks[key];
         
-        if (this.chunks.has(key)) {
-            return this.chunks.get(key);
-        }
+        const chunk = new Chunk(x, y, z, this);
+        this.chunks[key] = chunk;
         
-        const chunk = new Chunk(chunkX, chunkZ, this);
-        this.chunks.set(key, chunk);
-        
-        chunk.generate();
+        await new Promise(resolve => {
+            setTimeout(() => {
+                chunk.generateTerrain();
+                chunk.buildMesh();
+                resolve();
+            }, 0);
+        });
         
         return chunk;
     }
     
-    unloadChunk(chunkX, chunkZ) {
-        const key = this.getChunkKey(chunkX, chunkZ);
-        const chunk = this.chunks.get(key);
-        
+    unloadChunk(x, y, z) {
+        const key = this.getChunkKey(x, y, z);
+        const chunk = this.chunks[key];
         if (chunk) {
-            if (chunk.mesh && this.scene) {
-                this.scene.remove(chunk.mesh);
-            }
             chunk.dispose();
-            this.chunks.delete(key);
+            delete this.chunks[key];
         }
     }
     
     getBlock(x, y, z) {
-        if (y < 0 || y >= 16) return 0;
-        
-        const chunkX = Math.floor(x / 16);
-        const chunkZ = Math.floor(z / 16);
-        const chunk = this.getChunk(chunkX, chunkZ);
+        const coords = this.worldToChunkCoords(x, y, z);
+        const chunk = this.chunks[this.getChunkKey(coords.chunkX, coords.chunkY, coords.chunkZ)];
         
         if (!chunk) return 0;
-        
-        const localX = x - chunkX * 16;
-        const localZ = z - chunkZ * 16;
-        
-        return chunk.getBlock(localX, y, localZ);
+        return chunk.getBlock(coords.localX, coords.localY, coords.localZ);
     }
     
     setBlock(x, y, z, type) {
-        if (y < 0 || y >= 16) return;
+        const coords = this.worldToChunkCoords(x, y, z);
+        const chunk = this.chunks[this.getChunkKey(coords.chunkX, coords.chunkY, coords.chunkZ)];
         
-        const chunkX = Math.floor(x / 16);
-        const chunkZ = Math.floor(z / 16);
-        const chunk = this.getChunk(chunkX, chunkZ);
-        
-        if (!chunk) return;
-        
-        const localX = x - chunkX * 16;
-        const localZ = z - chunkZ * 16;
-        
-        chunk.setBlock(localX, y, localZ, type);
+        if (chunk) {
+            chunk.setBlock(coords.localX, coords.localY, coords.localZ, type);
+            chunk.buildMesh();
+            
+            this.updateNeighborChunks(coords.chunkX, coords.chunkY, coords.chunkZ, coords.localX, coords.localY, coords.localZ);
+        }
     }
     
-    markChunkDirty(chunkX, chunkZ) {
-        const chunk = this.getChunk(chunkX, chunkZ);
-        if (chunk) {
-            chunk.dirty = true;
+    updateNeighborChunks(chunkX, chunkY, chunkZ, localX, localY, localZ) {
+        const neighbors = [];
+        
+        if (localX === 0) neighbors.push([chunkX - 1, chunkY, chunkZ]);
+        if (localX === this.chunkSize - 1) neighbors.push([chunkX + 1, chunkY, chunkZ]);
+        if (localY === 0) neighbors.push([chunkX, chunkY - 1, chunkZ]);
+        if (localY === this.chunkSize - 1) neighbors.push([chunkX, chunkY + 1, chunkZ]);
+        if (localZ === 0) neighbors.push([chunkX, chunkY, chunkZ - 1]);
+        if (localZ === this.chunkSize - 1) neighbors.push([chunkX, chunkY, chunkZ + 1]);
+        
+        for (const [nx, ny, nz] of neighbors) {
+            const neighborChunk = this.chunks[this.getChunkKey(nx, ny, nz)];
+            if (neighborChunk) {
+                neighborChunk.needsUpdate = true;
+                neighborChunk.buildMesh();
+            }
         }
     }
     
     update(playerPosition) {
-        const playerChunkX = Math.floor(playerPosition.x / 16);
-        const playerChunkZ = Math.floor(playerPosition.z / 16);
-        
-        const chunksToLoad = new Set();
-        const chunksToKeep = new Set();
+        const playerChunkX = Math.floor(playerPosition.x / this.chunkSize);
+        const playerChunkY = Math.floor(playerPosition.y / this.chunkSize);
+        const playerChunkZ = Math.floor(playerPosition.z / this.chunkSize);
         
         for (let x = playerChunkX - this.renderDistance; x <= playerChunkX + this.renderDistance; x++) {
-            for (let z = playerChunkZ - this.renderDistance; z <= playerChunkZ + this.renderDistance; z++) {
-                const key = this.getChunkKey(x, z);
-                chunksToKeep.add(key);
-                
-                if (!this.chunks.has(key)) {
-                    chunksToLoad.add({ x, z });
+            for (let y = Math.max(0, playerChunkY - 2); y <= Math.min(3, playerChunkY + 2); y++) {
+                for (let z = playerChunkZ - this.renderDistance; z <= playerChunkZ + this.renderDistance; z++) {
+                    const key = this.getChunkKey(x, y, z);
+                    if (!this.chunks[key]) {
+                        this.loadChunk(x, y, z);
+                    }
                 }
             }
         }
         
-        for (const [key, chunk] of this.chunks.entries()) {
-            if (!chunksToKeep.has(key)) {
-                this.unloadChunk(chunk.x, chunk.z);
+        for (const key in this.chunks) {
+            const [x, y, z] = key.split(',').map(Number);
+            const distance = Math.max(
+                Math.abs(x - playerChunkX),
+                Math.abs(y - playerChunkY),
+                Math.abs(z - playerChunkZ)
+            );
+            
+            if (distance > this.renderDistance + 1) {
+                this.unloadChunk(x, y, z);
             }
         }
-        
-        chunksToLoad.forEach(({ x, z }) => {
-            this.loadChunk(x, z);
-        });
-        
-        this.updateChunkMeshes();
-    }
-    
-    updateChunkMeshes() {
-        for (const chunk of this.chunks.values()) {
-            if (chunk.dirty) {
-                const oldMesh = chunk.mesh;
-                if (oldMesh && this.scene) {
-                    this.scene.remove(oldMesh);
-                }
-                
-                const newMesh = chunk.createMesh();
-                if (newMesh && this.scene) {
-                    this.scene.add(newMesh);
-                }
-            }
-        }
-    }
-    
-    clear() {
-        for (const chunk of this.chunks.values()) {
-            if (chunk.mesh && this.scene) {
-                this.scene.remove(chunk.mesh);
-            }
-            chunk.dispose();
-        }
-        this.chunks.clear();
     }
     
     loadChunks(savedChunks) {
         this.clear();
-        
-        for (const [key, chunkData] of savedChunks.entries()) {
-            const [x, z] = key.split(',').map(Number);
-            const chunk = new Chunk(x, z, this);
-            chunk.blocks = chunkData.blocks;
-            chunk.modified = chunkData.modified;
-            chunk.generated = true;
-            chunk.dirty = true;
-            
-            this.chunks.set(key, chunk);
+        for (const key in savedChunks) {
+            const [x, y, z] = key.split(',').map(Number);
+            const chunk = new Chunk(x, y, z, this);
+            chunk.blocks = new Uint8Array(savedChunks[key].blocks);
+            chunk.buildMesh();
+            this.chunks[key] = chunk;
         }
-        
-        this.updateChunkMeshes();
     }
     
-    getRenderableChunks() {
-        return Array.from(this.chunks.values()).filter(chunk => chunk.mesh);
+    clear() {
+        for (const key in this.chunks) {
+            this.chunks[key].dispose();
+        }
+        this.chunks = {};
     }
 }
 
