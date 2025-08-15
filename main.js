@@ -240,6 +240,14 @@ class Game {
     }
 }
 
-window.addEventListener('load', () => {
-    new Game();
-});
+function initGame() {
+    if (typeof THREE !== 'undefined') {
+        new Game();
+    } else {
+        console.error('THREE.js failed to load');
+    }
+}
+
+if (typeof THREE !== 'undefined') {
+    initGame();
+}
